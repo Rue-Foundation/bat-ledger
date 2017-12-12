@@ -108,8 +108,12 @@ Wallet.prototype.validateTxSignature = function (info, txn, signature) {
     const expectedDigest = 'SHA-256=' + crypto.createHash('sha256').update(signature.octets, 'utf8').digest('base64')
     if (expectedDigest !== signature.headers.digest) throw new Error('the digest specified is not valid for the unsigned transaction provided')
 
+    const verifyInput = {headers: signature.headers, publicKey: info.httpSigningPubKey, algorithm: 'ed25519'}
     const result = verify({headers: signature.headers, publicKey: info.httpSigningPubKey}, { algorithm: 'ed25519' })
-    if (!result.verified) throw new Error('the http-signature is not valid')
+    if (!result.verified) {
+      debug('verifySigned', verifyInput)
+      throw new Error('the http-signature is not valid')
+    }
   } else {
     throw new Error('wallet validateTxSignature for requestType ' + info.requestType + ' not supported for altcurrency ' + info.altcurrency)
   }
