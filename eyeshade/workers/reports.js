@@ -118,45 +118,8 @@ const hourly2 = async (debug, runtime) => {
     })
 
     for (let publisher of underscore.keys(history)) {
-      const records = history[publisher]
-      let info, params, results, state, visible
-
       try {
-        results = await publish(debug, runtime, 'get', publisher)
-        for (let result of results) {
-          const record = underscore.findWhere(records, { verificationId: result.id })
-          let method, visibleP
-
-          if (!record) continue
-
-          visible = result.show_verification_status
-          visibleP = (typeof visible !== 'undefined')
-          method = result.verification_method
-          info = underscore.pick(result, [ 'name', 'email' ])
-          if (result.phone_normalized) info.phone = result.phone_normalized
-          if (result.preferredCurrency) info.preferredCurrency = result.preferredCurrency
-          state = {
-            $currentDate: { timestamp: { $type: 'timestamp' } },
-            $set: { info: info }
-          }
-          if (visibleP) state.$set.visible = visible
-          params = underscore.pick(record, [ 'info', 'visible' ])
-          if (method) {
-            state.$set.method = method
-            params.method = record.method
-          }
-
-          if (underscore.isEqual(params, state.$set)) continue
-
-          await tokens.update({ verificationId: record.verificationId, publisher: publisher }, state, { upsert: true })
-
-          if (!record.verified) continue
-
-          state.$set = underscore.pick(state.$set, [ 'info', 'visible' ])
-          await publishers.update({ publisher: publisher }, state, { upsert: true })
-
-          await runtime.queue.send(debug, 'publisher-report', { publisher: publisher, verified: true, visible: visible })
-        }
+        await refresh(debug, runtime, publisher, history[publisher])
       } catch (ex) {
         runtime.captureException(ex)
         if (ex.data) {
@@ -572,20 +535,77 @@ const date2objectId = (iso8601, ceilP) => {
                        (ceilP ? 'ffffffffffffffff' : '0000000000000000'))
 }
 
+const refresh = async (debug, runtime, publisher, records) => {
+  const publishers = runtime.database.get('publishers', debug)
+  const tokens = runtime.database.get('tokens', debug)
+  let entries, info, params, results, state, visible
+
+  if (!records) {
+    records = []
+
+    entries = await tokens.find({ publisher: publisher })
+    entries.forEach((entry) => {
+      if (typeof entry.visible === 'undefined') entry.visible = false
+      records.push(entry)
+    })
+  }
+
+  results = await publish(debug, runtime, 'get', publisher)
+  console.log('results=' + JSON.stringify(results, null, 2))
+  for (let result of results) {
+    const record = underscore.findWhere(records, { verificationId: result.id })
+    let method, visibleP
+
+    if (!record) continue
+
+    visible = result.show_verification_status
+    visibleP = (typeof visible !== 'undefined')
+    method = result.verification_method
+    info = underscore.pick(result, [ 'name', 'email' ])
+    if (result.phone_normalized) info.phone = result.phone_normalized
+    if (result.preferredCurrency) info.preferredCurrency = result.preferredCurrency
+    state = {
+      $currentDate: { timestamp: { $type: 'timestamp' } },
+      $set: { info: info }
+    }
+    if (visibleP) state.$set.visible = visible
+    params = underscore.pick(record, [ 'info', 'visible' ])
+    if (method) {
+      state.$set.method = method
+      params.method = record.method
+    }
+
+    if (underscore.isEqual(params, state.$set)) continue
+
+    await tokens.update({ verificationId: record.verificationId, publisher: publisher }, state, { upsert: true })
+
+    if (!record.verified) continue
+
+    state.$set = underscore.pick(state.$set, [ 'info', 'visible' ])
+    await publishers.update({ publisher: publisher }, state, { upsert: true })
+
+    await runtime.queue.send(debug, 'publisher-report', { publisher: publisher, verified: true, visible: visible })
+  }
+}
+
 var exports = {}
 
 exports.initialize = async (debug, runtime) => {
   altcurrency = runtime.config.altcurrency || 'BAT'
 
   if ((typeof process.env.DYNO === 'undefined') || (process.env.DYNO === 'worker.1')) {
+/*
     setTimeout(() => { daily(debug, runtime) }, 5 * 1000)
     setTimeout(() => { hourly(debug, runtime) }, 30 * 1000)
     setTimeout(() => { hourly2(debug, runtime) }, 5 * 60 * 1000)
+ */
+    setTimeout(() => { hourly2(debug, runtime) }, 5 * 1000)
   }
 }
 
 exports.create = create
 exports.publish = publish
+exports.refresh = refresh
 
 exports.workers = {
 /* sent by GET /v1/reports/publisher/{publisher}/contributions

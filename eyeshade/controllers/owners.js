@@ -1,4 +1,5 @@
 const querystring = require('querystring')
+const path = require('path')
 const url = require('url')
 
 const BigNumber = require('bignumber.js')
@@ -12,6 +13,8 @@ const batPublisher = require('bat-publisher')
 const utils = require('bat-utils')
 const braveHapi = utils.extras.hapi
 const braveJoi = utils.extras.joi
+
+const reports = require(path.join(__dirname, '../workers', 'reports.js'))
 
 const v1 = {}
 
@@ -73,6 +76,14 @@ v1.bulk = {
       }
 
       reply({})
+
+      for (let entry of providers) {
+        try {
+          await reports.refresh(debug, runtime, entry.publisher)
+        } catch (ex) {
+          debug('owner', { reason: ex.toString(), stack: ex.stack })
+        }
+      }
     }
   },
   auth: {
@@ -121,6 +132,7 @@ v1.getWallet = {
       const currency = request.query.currency.toUpperCase()
       const debug = braveHapi.debug(module, request)
       const owners = runtime.database.get('owners', debug)
+      const publishers = runtime.database.get('publishers', debug)
       const settlements = runtime.database.get('settlements', debug)
       const voting = runtime.database.get('voting', debug)
       let amount, entries, entry, provider, rates, result, summary
@@ -218,6 +230,15 @@ v1.getWallet = {
       }
 
       reply(result)
+
+      entries = await publishers.find({ owner: owner })
+      for (let entry of entries) {
+        try {
+          await reports.refresh(debug, runtime, entry.publisher)
+        } catch (ex) {
+          debug('owner', { reason: ex.toString(), stack: ex.stack })
+        }
+      }
     }
   },
 
@@ -335,7 +356,7 @@ v1.putWallet = {
 }
 
 /*
-   GET /v1/owner/{owner}/statement
+   GET /v1/owners/{owner}/statement
        [ used by publishers ]
  */
 
