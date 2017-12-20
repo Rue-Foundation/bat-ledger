@@ -1240,7 +1240,8 @@ exports.workers = {
             publisher: slice.publisher,
             votes: slice.counts,
             created: new Date(parseInt(slice._id.toHexString().substring(0, 8), 16) * 1000).getTime(),
-            modified: (slice.timestamp.high_ * 1000) + (slice.timestamp.low_ / bson.Timestamp.TWO_PWR_32_DBL_)
+            modified: (slice.timestamp.high_ * 1000) + (slice.timestamp.low_ / bson.Timestamp.TWO_PWR_32_DBL_),
+            cohort: slice.cohort || 'control'
           })
         })
       }
@@ -1261,7 +1262,7 @@ exports.workers = {
 
       fields = [ 'surveyorId', 'probi', 'fee', 'inputs', 'quantum' ]
       if (!summaryP) fields.push('publisher')
-      fields = fields.concat([ 'votes', 'created', 'modified' ])
+      fields = fields.concat([ 'votes', 'created', 'modified', 'cohort' ])
       try { await file.write(utf8ify(json2csv({ data: results, fields: fields })), true) } catch (ex) {
         debug('reports', { report: 'report-surveyors-contributions', reason: ex.toString() })
         file.close()
